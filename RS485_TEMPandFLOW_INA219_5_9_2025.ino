@@ -1,27 +1,35 @@
+/*
+
+  Data coms - Code to receive data from the INA219 and RS485-Bronkhorst Flexiflow
+
+  Created by Kristupas Liudvikas Naudolaitis & Emils Kukojs, December 1, 2025.
+  
+*/
 #include <ModbusMaster.h>
 #include <SoftwareSerial.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 
 // ----------- Modbus (Sketch 1) ------------------
-const int SSRxPin = 10;
-const int SSTxPin = 5;
-SoftwareSerial SoftSerial(SSRxPin, SSTxPin);
-const int INA_219 = 21;
+const int rs485Rx = 10; // Receive Pin 
+const int rs485Tx = 5; // Transmit Pin
 
-#define MAX485_DE_RE 4
+SoftwareSerial rs485(rs485Rx, rs485Tx); // Creates Virtual serial object
+
+#define MAX485_DE_RE 4 // Write/Read switch for communication
 ModbusMaster node;
 
 void preTransmission() {
-  digitalWrite(MAX485_DE_RE, 1);
+  digitalWrite(MAX485_DE_RE, 1); // Transmit mode
 }
 
 void postTransmission() {
-  digitalWrite(MAX485_DE_RE, 0);
+  digitalWrite(MAX485_DE_RE, 0); // Receiving mode
 }
 
 // ----------- INA219 (Sketch 2) ------------------
-Adafruit_INA219 ina219_B(0x40); //(default 0x40 A1 and A0 open; 0x41 A1 open and A0 closed, 0x44 A0 Closed A1 open, 0x45 A0 and A1 closed)
+const int INA_219 = 21;
+Adafruit_INA219 ina219_B(0x40); //(default 0x40)
 
 const uint16_t ticks[] = {5000, 1000, 2000, 1000}; // purgevalve behaviour, i.e. 5000ms off, 1000ms on, 2000ms off, 1000 ms on 
 const uint8_t nbTicks = sizeof(ticks) / sizeof(ticks[0]);
@@ -41,16 +49,16 @@ float INA219_B_power_mW = 0;
 float INA219_B_power_batt_mW = 0;
 float INA219_B_energy = 0;
 
+
 void setup() {
   Serial.begin(9600);
   while (!Serial) delay(1); // Wait for serial port to open
 
   // ----- Modbus Setup -----
-  pinMode(MAX485_DE_RE, OUTPUT);
-  digitalWrite(MAX485_DE_RE, 0);
-  Serial.begin(9600);
-  SoftSerial.begin(19200);
-  node.begin(0x02, SoftSerial);
+  pinMode(MAX485_DE_RE, OUTPUT); // Makes this digital pin an output
+  digitalWrite(MAX485_DE_RE, 0); // Turns on Receiving mode
+  rs485.begin(38400); // Baud rate for the Bronkhorst - default 38400
+  node.begin(1, rs485); // Slave ID - default 1
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
 
@@ -60,9 +68,6 @@ void setup() {
     while (1) delay(10);
   }
   Serial.println(F("Measuring voltage and current with INA219 ..."));
-
-  // ----- LED Setup -----
-
 }
 
 void loop() {
@@ -71,30 +76,30 @@ void loop() {
   float temperature = 0.0;
   float flow = 0.0;
 
-  result = node.readHoldingRegisters(0xA138, 2);
+  result = node.readHoldingRegisters(0xA138, 2); // Modbus command (adress, 2 registers)
   if (result == node.ku8MBSuccess) {
-    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF;
-    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF;
-    uint32_t bits = ((uint32_t)r0 << 16) | r1;
-    memcpy(&temperature, &bits, sizeof(float));
+    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF; // no fucking clue what 0x7FFF is
+    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF; // and here too
+    uint32_t bits = ((uint32_t)r0 << 16) | r1;  // combines the two registers or smth like that idrk
+    memcpy(&temperature, &bits, sizeof(float)); // memory copy
   } else {
     Serial.print("Temp read error: ");
     Serial.println(result, HEX);
   }
 
-  delay(10);
+  delay(50); // Was 10, put it higher to prevent errors if the sys is too slow
 
   // ---------- Read Modbus Flow ----------
-  result = node.readHoldingRegisters(0x0020, 1);
+  result = node.readHoldingRegisters(0x0020, 1); // Sends a modbus command (hex adress, registers to read)
   if (result == node.ku8MBSuccess) {
     uint16_t rawFlow = node.getResponseBuffer(0);
-    flow = float(rawFlow) / 16.0;
+    flow = float(rawFlow) / 16.0; // IDK why its divided by 16 this should just be a 0 to 100% measure in 0-65535
   } else {
     Serial.print("Flow read error: ");
     Serial.println(result, HEX);
   }
 
-  delay(10);
+  delay(50);
 
   // ---------- Read INA219 Values ----------
   INA219_B_shuntvoltage = ina219_B.getShuntVoltage_mV();
@@ -117,7 +122,7 @@ if (INA219_B_loadvoltage >= 5) {digitalWrite(ledPin2, HIGH);}
 
   // ---------- Output All Data ----------
   Serial.print("Temperature: ");
-  Serial.print(temperature, 2);
+  Serial.print(temperature, 2); // 2 dfor decimal spaces
   Serial.print(" °C\t");
 
   Serial.print("Flow: ");
@@ -143,5 +148,5 @@ if (INA219_B_loadvoltage >= 5) {digitalWrite(ledPin2, HIGH);}
 
 
   delay(1000);
-  SoftSerial.flush();
+  rs485.flush();
 }
