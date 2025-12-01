@@ -28,15 +28,13 @@ void postTransmission() {
 }
 
 // ----------- INA219 (Sketch 2) ------------------
-const int INA_219 = 21;
 Adafruit_INA219 ina219_B(0x40); //(default 0x40)
 
+// No clue what these are:
 const uint16_t ticks[] = {5000, 1000, 2000, 1000}; // purgevalve behaviour, i.e. 5000ms off, 1000ms on, 2000ms off, 1000 ms on 
 const uint8_t nbTicks = sizeof(ticks) / sizeof(ticks[0]);
 uint8_t currentTick = 0;
 uint32_t previousMillis = 0; // millis is used for energy calculations
-const uint8_t ledPin = 6; // Purge valve relay signal
-const uint8_t ledPin2 = 10; // Purge valve relay signal
 
 unsigned long previousTime = 0;
 const unsigned long eventInterval = 1000;
@@ -63,11 +61,11 @@ void setup() {
   node.postTransmission(postTransmission);
 
   // ----- INA219 Setup -----
-  if (!ina219_B.begin(INA_219) == LOW) {
+  if (!ina219_B.begin()) { 
     Serial.println(F("Failed to find INA219 chip B"));
     while (1) delay(10);
   }
-  Serial.println(F("Measuring voltage and current with INA219 ..."));
+  Serial.println(F("INA219 Connected..."));
 }
 
 void loop() {
@@ -79,7 +77,7 @@ void loop() {
   result = node.readHoldingRegisters(0xA138, 2); // Modbus command (adress, 2 registers)
   if (result == node.ku8MBSuccess) {
     uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF; // no fucking clue what 0x7FFF is
-    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF; // and here too
+    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF; // AI says it forces the first bit to be 0, idk why we do this here but fuck it we ball
     uint32_t bits = ((uint32_t)r0 << 16) | r1;  // combines the two registers or smth like that idrk
     memcpy(&temperature, &bits, sizeof(float)); // memory copy
   } else {
@@ -93,7 +91,7 @@ void loop() {
   result = node.readHoldingRegisters(0x0020, 1); // Sends a modbus command (hex adress, registers to read)
   if (result == node.ku8MBSuccess) {
     uint16_t rawFlow = node.getResponseBuffer(0);
-    flow = float(rawFlow) / 16.0; // IDK why its divided by 16 this should just be a 0 to 100% measure in 0-65535
+    flow = float(rawFlow) / 16.0; // IDK why its divided by 16, its just a % where 0-32000 is 0 to 100% 
   } else {
     Serial.print("Flow read error: ");
     Serial.println(result, HEX);
@@ -109,20 +107,16 @@ void loop() {
   INA219_B_loadvoltage = INA219_B_busvoltage + (INA219_B_shuntvoltage / 1000);
   INA219_B_power_batt_mW = INA219_B_loadvoltage * INA219_B_current_mA;
 
-  unsigned long currentTime = millis();
+
+  unsigned long currentTime = millis(); // Calculates total energy consumed (+=)
   if (currentTime - previousTime >= eventInterval) {
-    INA219_B_energy += ((currentTime - previousTime) * INA219_B_power_batt_mW) / 1000000.0;
+    INA219_B_energy += ((currentTime - previousTime) * INA219_B_power_batt_mW) / 1000000.0; 
     previousTime = currentTime;
   }
 
-
-
-
-if (INA219_B_loadvoltage >= 5) {digitalWrite(ledPin2, HIGH);}
-
   // ---------- Output All Data ----------
   Serial.print("Temperature: ");
-  Serial.print(temperature, 2); // 2 dfor decimal spaces
+  Serial.print(temperature, 2); // 2 for decimal spaces
   Serial.print(" °C\t");
 
   Serial.print("Flow: ");
