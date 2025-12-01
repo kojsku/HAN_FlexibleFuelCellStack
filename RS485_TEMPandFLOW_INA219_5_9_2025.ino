@@ -139,7 +139,16 @@ void loop() {
   Serial.print(INA219_B_energy); Serial.println(" J");
 
   Serial.print(currentTick); Serial.println(" ms");
-
+/*
+// CSV FORMAT PRINTING 
+  Serial.print(millis()); Serial.print(","); // time in ms
+  Serial.print(temperature, 2); Serial.print(","); // Temperature in C
+  Serial.print(flow, 2); Serial.print(","); // flow in mln/min (maybe idrk)
+  Serial.print(INA219_B_loadvoltage); Serial.print(","); // Load voltage in V
+  Serial.print(INA219_B_current_mA/1000); Serial.print(","); // Current in A
+  Serial.print(INA219_B_power_batt_mW/1000); Serial.print(","); // Power in W
+  Serial.print(INA219_B_energy); // Energy in J
+*/
 
   delay(1000);
   rs485.flush();
