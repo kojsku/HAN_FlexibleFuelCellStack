@@ -57,7 +57,7 @@ void setup() {
   // ----- Modbus Setup -----
   pinMode(MAX485_DE_RE, OUTPUT); // Makes this digital pin an output
   digitalWrite(MAX485_DE_RE, 0); // Turns on Receiving mode
-  rs485.begin(38400); // Baud rate for the Bronkhorst - default 38400
+  rs485.begin(19200); // Baud rate for the Bronkhorst - default 19200
   node.begin(1, rs485); // Slave ID - default 1
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
