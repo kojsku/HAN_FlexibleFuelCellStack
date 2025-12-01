@@ -11,12 +11,13 @@
 #include <Adafruit_INA219.h>
 
 // ----------- Modbus (Sketch 1) ------------------
-const int rs485Rx = 10; // Receive Pin 
-const int rs485Tx = 5; // Transmit Pin
+const int rs485Rx =5; // Receive Pin 
+const int rs485Tx =7; // Transmit Pin
+// const int INA219 = 21; 
 
 SoftwareSerial rs485(rs485Rx, rs485Tx); // Creates Virtual serial object
 
-#define MAX485_DE_RE 4 // Write/Read switch for communication
+#define MAX485_DE_RE 6 // Write/Read switch for communication
 ModbusMaster node;
 
 void preTransmission() {
@@ -55,7 +56,7 @@ void setup() {
   // ----- Modbus Setup -----
   pinMode(MAX485_DE_RE, OUTPUT); // Makes this digital pin an output
   digitalWrite(MAX485_DE_RE, 0); // Turns on Receiving mode
-  rs485.begin(19200); // Baud rate for the Bronkhorst - default 19200
+  rs485.begin(9600); // Baud rate for the Bronkhorst - default 19200
   node.begin(1, rs485); // Slave ID - default 1
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
