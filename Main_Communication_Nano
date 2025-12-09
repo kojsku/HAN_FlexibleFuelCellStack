@@ -1,8 +1,4 @@
-/*
 
-  Data coms with ina219 and rs485. Specific for arduino nano r4.
-
-  Created by AI & Kristupas Liudvikas Naudolaitis & Emils Kukojs, December 9th, 2025.
 
 */
 #include <ModbusMaster.h>
@@ -43,16 +39,22 @@ float INA219_B_power_mW = 0;
 float INA219_B_power_batt_mW = 0;
 float INA219_B_energy = 0;
 
+// ----------- FAN CONTROL SETTINGS (ADDED) -----------
+const int FAN_PWM_PIN = 9; // 4-wire fan PWM input
+// Define thresholds for mapping current → fan speed
+const float MIN_CURRENT_mA = 0.0;     // Fan minimum at or below this current
+const float MAX_CURRENT_mA = 2000.0;  // Fan full speed above this current
+
 
 void setup() {
   Serial.begin(9600);
   while (!Serial) delay(1); // Wait for serial port to open
 
   // ----- Modbus Setup (Hardware Serial) -----
-  pinMode(MAX485_DE_RE, OUTPUT); // Makes this digital pin an output
-  digitalWrite(MAX485_DE_RE, LOW); // Turns on Receiving mode
-  Serial1.begin(9600); // Baud rate for the Bronkhorst - default 19200 check with usb
-  node.begin(1, Serial1); // Slave ID - default 1
+  pinMode(MAX485_DE_RE, OUTPUT); 
+  digitalWrite(MAX485_DE_RE, LOW); 
+  Serial1.begin(9600); 
+  node.begin(1, Serial1); 
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
 
@@ -62,7 +64,12 @@ void setup() {
     while (1) delay(10);
   }
   Serial.println(F("INA219 Connected..."));
+
+  // ----- FAN PWM PIN SETUP (ADDED) -----
+  pinMode(FAN_PWM_PIN, OUTPUT);
+  analogWrite(FAN_PWM_PIN, 0); // Start with fan off
 }
+
 
 void loop() {
   // ---------- Read Modbus Temperature ----------
@@ -70,13 +77,12 @@ void loop() {
   float temperature = 0.0;
   float flow = 0.0;
 
-  result = node.readHoldingRegisters(0xA138, 2);  // Read 2 registers starting at 0xA138
+  result = node.readHoldingRegisters(0xA138, 2);  
   if (result == node.ku8MBSuccess) {
-    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF; // no fucking clue what 0x7FFF is
+    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF; 
     uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF; 
-    uint32_t bits = ((uint32_t)r0 << 16) | r1;  // Combine two 16-bit registers into one 32-bit variable
-    // Note: If values look wrong, try swapping r0 and r1 order here
-    memcpy(&temperature, &bits, sizeof(float)); // Interpret that 32-bit variable as a float
+    uint32_t bits = ((uint32_t)r0 << 16) | r1;
+    memcpy(&temperature, &bits, sizeof(float)); 
   } else {
     Serial.print("Temp read error: ");
     Serial.println(result, HEX);
@@ -88,7 +94,7 @@ void loop() {
   result = node.readHoldingRegisters(0x0020, 1); 
   if (result == node.ku8MBSuccess) {
     uint16_t rawFlow = node.getResponseBuffer(0);
-    flow = float(rawFlow) / 16.0; // IDK why its divided by 16, its just a % where 0-32000 is 0 to 100%
+    flow = float(rawFlow) / 16.0; 
   } else {
     Serial.print("Flow read error: ");
     Serial.println(result, HEX);
@@ -110,9 +116,16 @@ void loop() {
     previousTime = currentTime;
   }
 
+  // ---------- FAN SPEED CONTROL BASED ON CURRENT (ADDED) ----------
+  // Map battery current to 0–255 PWM
+  float clampedCurrent = constrain(INA219_B_current_mA, MIN_CURRENT_mA, MAX_CURRENT_mA);
+  int fanPWM = map(clampedCurrent, MIN_CURRENT_mA, MAX_CURRENT_mA, 30, 255);
+  analogWrite(FAN_PWM_PIN, fanPWM);
+
+
   // ---------- Output All Data ----------
   Serial.print("Temperature: ");
-  Serial.print(temperature, 2); // 2 for decimal spaces
+  Serial.print(temperature, 2); 
   Serial.print(" °C\t");
 
   Serial.print("Flow: ");
@@ -134,7 +147,8 @@ void loop() {
   Serial.print("Battery Energy: ");
   Serial.print(INA219_B_energy); Serial.println(" J");
 
-  // Serial.print(currentTick); Serial.println(" ms"); // should be time but doesnt work rn
+  Serial.print("Fan PWM: ");
+  Serial.println(fanPWM);
 
   delay(500);
   Serial1.flush();
