@@ -1,12 +1,15 @@
+// ---- Pin Definitions ----
+const int switchPin = 3;   // Switch input 
+const int buttonPin = 4;   // Button input
 
+const int relay1 = 8;      // Relay 1 output
+const int relay2 = 7;      // Relay 2 output 
 
-*/
 #include <ModbusMaster.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 
 // ----------- Modbus Settings ------------------
-
 #define MAX485_DE_RE 2 // Digital2 pin - Write/Read switch for communication
 ModbusMaster node;
 
@@ -39,62 +42,83 @@ float INA219_B_power_mW = 0;
 float INA219_B_power_batt_mW = 0;
 float INA219_B_energy = 0;
 
-// ----------- FAN CONTROL SETTINGS (ADDED) -----------
+// ----------- FAN CONTROL SETTINGS -----------
 const int FAN_PWM_PIN = 9; // 4-wire fan PWM input
-// Define thresholds for mapping current → fan speed
-const float MIN_CURRENT_mA = 0.0;     // Fan minimum at or below this current
-const float MAX_CURRENT_mA = 2000.0;  // Fan full speed above this current
+const float MIN_CURRENT_mA = 0.0;
+const float MAX_CURRENT_mA = 2000.0;
 
-
+// --------------------- MERGED SETUP() ---------------------
 void setup() {
-  Serial.begin(9600);
-  while (!Serial) delay(1); // Wait for serial port to open
 
-  // ----- Modbus Setup (Hardware Serial) -----
-  pinMode(MAX485_DE_RE, OUTPUT); 
-  digitalWrite(MAX485_DE_RE, LOW); 
-  Serial1.begin(9600); 
-  node.begin(1, Serial1); 
+  // ---- original relay/button setup ----
+  pinMode(switchPin, INPUT_PULLUP);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  pinMode(relay1, OUTPUT);
+  pinMode(relay2, OUTPUT);
+
+  digitalWrite(relay1, LOW);
+  digitalWrite(relay2, LOW);
+
+  // ---- original Modbus & INA219 setup ----
+  Serial.begin(9600);
+  while (!Serial) delay(1);
+
+  pinMode(MAX485_DE_RE, OUTPUT);
+  digitalWrite(MAX485_DE_RE, LOW);
+
+  Serial1.begin(9600);
+  node.begin(1, Serial1);
   node.preTransmission(preTransmission);
   node.postTransmission(postTransmission);
 
-  // ----- INA219 Setup -----
-  if (!ina219_B.begin()) { 
+  if (!ina219_B.begin()) {
     Serial.println(F("Failed to find INA219 chip B"));
     while (1) delay(10);
   }
   Serial.println(F("INA219 Connected..."));
 
-  // ----- FAN PWM PIN SETUP (ADDED) -----
   pinMode(FAN_PWM_PIN, OUTPUT);
-  analogWrite(FAN_PWM_PIN, 0); // Start with fan off
+  analogWrite(FAN_PWM_PIN, 0);
 }
 
-
+// --------------------- MERGED LOOP() ---------------------
 void loop() {
-  // ---------- Read Modbus Temperature ----------
+
+  // ---- original relay/button logic ----
+  bool switchOn = (digitalRead(switchPin) == LOW);
+  bool buttonOn = (digitalRead(buttonPin) == LOW);
+
+  if (switchOn) digitalWrite(relay1, HIGH);
+  else digitalWrite(relay1, LOW);
+
+  if (buttonOn) digitalWrite(relay2, HIGH);
+  else digitalWrite(relay2, LOW);
+
+
+  // ---------------- Modbus temperature ----------------
   uint8_t result;
   float temperature = 0.0;
   float flow = 0.0;
 
-  result = node.readHoldingRegisters(0xA138, 2);  
+  result = node.readHoldingRegisters(0xA138, 2);
   if (result == node.ku8MBSuccess) {
-    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF; 
-    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF; 
+    uint16_t r0 = node.getResponseBuffer(0) & 0x7FFF;
+    uint16_t r1 = node.getResponseBuffer(1) & 0x7FFF;
     uint32_t bits = ((uint32_t)r0 << 16) | r1;
-    memcpy(&temperature, &bits, sizeof(float)); 
+    memcpy(&temperature, &bits, sizeof(float));
   } else {
     Serial.print("Temp read error: ");
     Serial.println(result, HEX);
   }
 
-  delay(10); 
+  delay(10);
 
-  // ---------- Read Modbus Flow ----------
-  result = node.readHoldingRegisters(0x0020, 1); 
+  // ---------------- Modbus flow ----------------
+  result = node.readHoldingRegisters(0x0020, 1);
   if (result == node.ku8MBSuccess) {
     uint16_t rawFlow = node.getResponseBuffer(0);
-    flow = float(rawFlow) / 16.0; 
+    flow = float(rawFlow) / 16.0;
   } else {
     Serial.print("Flow read error: ");
     Serial.println(result, HEX);
@@ -102,7 +126,7 @@ void loop() {
 
   delay(10);
 
-  // ---------- Read INA219 Values ----------
+  // ---------------- INA219 readings ----------------
   INA219_B_shuntvoltage = ina219_B.getShuntVoltage_mV();
   INA219_B_busvoltage = ina219_B.getBusVoltage_V();
   INA219_B_current_mA = ina219_B.getCurrent_mA();
@@ -110,42 +134,43 @@ void loop() {
   INA219_B_loadvoltage = INA219_B_busvoltage + (INA219_B_shuntvoltage / 1000);
   INA219_B_power_batt_mW = INA219_B_loadvoltage * INA219_B_current_mA;
 
-  unsigned long currentTime = millis(); 
+  unsigned long currentTime = millis();
   if (currentTime - previousTime >= eventInterval) {
-    INA219_B_energy += ((currentTime - previousTime) * INA219_B_power_batt_mW) / 1000000.0; 
+    INA219_B_energy += ((currentTime - previousTime) *
+                         INA219_B_power_batt_mW) / 1000000.0;
     previousTime = currentTime;
   }
 
-  // ---------- FAN SPEED CONTROL BASED ON CURRENT (ADDED) ----------
-  // Map battery current to 0–255 PWM
+  // ---------------- FAN CONTROL ----------------
   float clampedCurrent = constrain(INA219_B_current_mA, MIN_CURRENT_mA, MAX_CURRENT_mA);
   int fanPWM = map(clampedCurrent, MIN_CURRENT_mA, MAX_CURRENT_mA, 30, 255);
   analogWrite(FAN_PWM_PIN, fanPWM);
 
-
-  // ---------- Output All Data ----------
+  // ---------------- Serial output ----------------
   Serial.print("Temperature: ");
-  Serial.print(temperature, 2); 
-  Serial.print(" °C\t");
+  Serial.print(temperature, 2);
+  Serial.print(" °C   ");
 
   Serial.print("Flow: ");
   Serial.print(flow, 2);
-  Serial.print(" mln/min\t");
+  Serial.print(" mln/min   ");
+
   Serial.print("H2 power in ");
-  Serial.print((flow*12.7)/60, 2);
+  Serial.print((flow * 12.7) / 60, 2);
   Serial.println(" W");
 
   Serial.print("Battery Voltage: ");
-  Serial.print(INA219_B_loadvoltage); Serial.print(" V\t");
+  Serial.print(INA219_B_loadvoltage); Serial.print(" V   ");
 
   Serial.print("Battery Current: ");
-  Serial.print(INA219_B_current_mA/1000); Serial.print(" A\t");
+  Serial.print(INA219_B_current_mA / 1000); Serial.print(" A   ");
 
   Serial.print("Battery Power: ");
-  Serial.print(INA219_B_power_batt_mW/1000); Serial.print(" W\t");
+  Serial.print(INA219_B_power_batt_mW / 1000); Serial.print(" W   ");
 
   Serial.print("Battery Energy: ");
-  Serial.print(INA219_B_energy); Serial.println(" J");
+  Serial.print(INA219_B_energy);
+  Serial.println(" J");
 
   Serial.print("Fan PWM: ");
   Serial.println(fanPWM);
