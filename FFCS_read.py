@@ -8,7 +8,7 @@ writer = csv.writer(logging, delimiter=",", escapechar=' ', quoting=csv.QUOTE_NO
 
 #Open a serial port that is connected to an Arduino, 
 #Windows and MAC will be COMX. Use Arduino IDE to find out name 'Tools -> Port'
-ser = serial.Serial('COM3')
+ser = serial.Serial('COM5')
 ser.flushInput()
 
 #Write out a single character encoded in utf-8; this is defalt encoding for Arduino serial comms

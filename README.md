@@ -14,5 +14,5 @@ To do this a small setup is necessary:
 To log the data follow these steps:
     1. Make sure the arduino IDE is closed, Two programs cannot access the same Serial port.
     2. Open the terminal and start the pyhton script with: python3 FFCS_read.py
-    3. The program will run and print out the values received from the Nano in the terminal window. To stop logging data write exit() or quit(). After the programm is stoped, in the same directory as FFCS_read.py, there will now be a file ‘FFCS_log.csv’.
+    3. The program will run and print out the values received from the Nano in the terminal window. To stop logging data write exit() or quit(). After the programm is stoped, in the same directory as FFCS_read.py, there will now be a file ‘FFCS_log.csv’.`t
 
